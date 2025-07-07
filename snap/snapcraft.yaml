@@ -1,0 +1,27 @@
+name: tsugu-snap-manager
+base: core24
+version: '1.0'
+summary: DIWhy flatseal for snap, using Gum
+description: |
+  DIWhy flatseal for flatpak, using Gum
+
+grade: stable
+confinement: classic
+
+apps:
+  snapmanager:
+    command: usr/bin/snapmanager
+    plugs:
+      - home
+
+parts:
+  snapmanager:
+    source: .
+    plugin: dump
+    organize:
+      snapmanager.sh: usr/bin/snapmanager
+  gum:
+    source: .
+    plugin: dump
+    organize:
+      gum: usr/bin/gum 
