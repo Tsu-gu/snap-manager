@@ -178,6 +178,72 @@ switch_channels() {
     fi
 }
 
+# Function to get running snap changes
+get_running_changes() {
+    snap changes | tail -n +2 | awk '$2 != "Done" && $2 != "Error" && $1 != "" && $1 != "-" {
+        # Extract ID, Status, and Summary (last field)
+        id = $1
+        status = $2
+        # Find the summary which starts after the last date/time field
+        summary_start = 0
+        for (i = 3; i <= NF; i++) {
+            if ($i == "-" || match($i, /^[0-9]{4}-[0-9]{2}-[0-9]{2}/) || match($i, /^(today|yesterday)/)) {
+                summary_start = i + 1
+            }
+        }
+        if (summary_start > 0 && summary_start <= NF) {
+            summary = ""
+            for (i = summary_start; i <= NF; i++) {
+                summary = summary $i " "
+            }
+            print id " - " status " - " summary
+        } else {
+            print id " - " status " - (no summary)"
+        }
+    }'
+}
+
+# Function to kill running snap process
+kill_running_process() {
+    gum style --foreground="#E95420" "Kill Running Snap Process"
+    
+    local running_changes
+    running_changes=$(get_running_changes)
+    
+    if [ -z "$running_changes" ]; then
+        gum style --foreground="#E95420" "No running snap processes found."
+        wait_for_input
+        return
+    fi
+    
+    local choice
+    choice=$(echo -e "← Back\n$running_changes" | gum choose --header="Select process to kill:")
+    
+    if [ "$choice" = "← Back" ] || [ -z "$choice" ]; then
+        return
+    fi
+    
+    # Extract the ID from the choice (first part before first " - ")
+    local process_id
+    process_id=$(echo "$choice" | cut -d' ' -f1)
+    
+    gum confirm "Are you sure you want to abort process $process_id?" && {
+        # First authenticate with sudo
+        sudo -v
+        
+        # Then run the abort with spinner
+        gum spin --spinner="dot" --title="Aborting process $process_id..." -- \
+            sudo snap abort "$process_id"
+        
+        if [ $? -eq 0 ]; then
+            gum style --foreground="#E95420" "✓ Successfully aborted process $process_id"
+        else
+            gum style --foreground="#E95420" "✗ Failed to abort process $process_id"
+        fi
+        wait_for_input
+    }
+}
+
 add_permissions() {
     gum style --foreground="#E95420" "Manage Snap Permissions"
 
@@ -624,6 +690,7 @@ main_menu() {
         local choice
         choice=$(gum choose --header="Select an option:" \
             "Revert snap" \
+            "Kill running process" \
             "Manage auto updates" \
             "Switch channels" \
             "Manage offline snaps" \
@@ -635,6 +702,9 @@ main_menu() {
             "Revert snap")
                 revert_snap
                 ;;
+            "Kill running process")
+                kill_running_process
+                ;;    
             "Manage auto updates")
                 stop_auto_updates
                 ;;       
