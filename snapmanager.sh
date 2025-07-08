@@ -109,6 +109,96 @@ wait_for_input() {
     read -n 1
 }
 
+# Function to get all versions of a specific snap
+get_snap_versions() {
+    local snap_name="$1"
+    snap list --all "$snap_name" --unicode=never | tail -n +2 | while IFS= read -r line; do
+        # Extract revision, version, and notes
+        local rev=$(echo "$line" | awk '{print $3}')
+        local version=$(echo "$line" | awk '{print $2}')
+        local notes=$(echo "$line" | awk '{print $NF}')
+        
+        # Create a formatted display string
+        if [ "$notes" = "disabled" ]; then
+            echo "$version (Rev: $rev) - disabled"
+        else
+            echo "$version (Rev: $rev) - current"
+        fi
+    done
+}
+
+# Function to extract revision number from formatted choice
+extract_revision() {
+    local formatted_choice="$1"
+    # Extract revision number from string like "version (Rev: 12345) - status"
+    echo "$formatted_choice" | sed 's/.*Rev: \([0-9]*\).*/\1/'
+}
+
+# Function to revert snap to specific version
+revert_snap_to_version() {
+    gum style --foreground="#E95420" "Revert Snap to Specific Version"
+    
+    local snap_name
+    snap_name=$(choose_snap "Select snap to revert to specific version:")
+    
+    if [ -n "$snap_name" ]; then
+        # Get all versions of the selected snap
+        local versions
+        versions=$(get_snap_versions "$snap_name")
+        
+        if [ -z "$versions" ]; then
+            gum style --foreground="#E95420" "No versions found for $snap_name or snap not installed."
+            wait_for_input
+            return
+        fi
+        
+        # Check if there are multiple versions available
+        local version_count
+        version_count=$(echo "$versions" | wc -l)
+        
+        if [ "$version_count" -eq 1 ]; then
+            gum style --foreground="#E95420" "Only one version available for $snap_name. No other versions to revert to."
+            wait_for_input
+            return
+        fi
+        
+        # Let user choose from available versions
+        local version_choice
+        version_choice=$(echo -e "← Back\n$versions" | gum choose --header="Select version to revert $snap_name to:")
+        
+        if [ "$version_choice" != "← Back" ] && [ -n "$version_choice" ]; then
+            # Extract revision number from the choice
+            local revision
+            revision=$(extract_revision "$version_choice")
+            
+            # Extract version for display
+            local version_display
+            version_display=$(echo "$version_choice" | sed 's/ (Rev:.*//')
+            
+            if [ -n "$revision" ]; then
+                gum confirm "Revert $snap_name to version $version_display (revision $revision)?" && {
+                    # First authenticate with sudo
+                    sudo -v
+                    
+                    # Then run the revert with spinner
+                    gum spin --spinner="dot" --title="Reverting $snap_name to revision $revision..." -- \
+                        sudo snap revert "$snap_name" --revision="$revision"
+                    
+                    if [ $? -eq 0 ]; then
+                        gum style --foreground="#E95420" "✓ Successfully reverted $snap_name to version $version_display"
+                    else
+                        gum style --foreground="#E95420" "✗ Failed to revert $snap_name to version $version_display"
+                    fi
+                    wait_for_input
+                }
+            else
+                gum style --foreground="#E95420" "✗ Could not extract revision number from selection"
+                wait_for_input
+            fi
+        fi
+    fi
+}
+
 # Function to revert snap
 revert_snap() {
     gum style --foreground="#E95420" "Revert Snap Package"
@@ -690,6 +780,7 @@ main_menu() {
         local choice
         choice=$(gum choose --header="Select an option:" \
             "Revert snap" \
+            "Revert snap to specific version" \
             "Kill running process" \
             "Manage auto updates" \
             "Switch channels" \
@@ -702,6 +793,9 @@ main_menu() {
             "Revert snap")
                 revert_snap
                 ;;
+            "Revert snap to specific version")
+                revert_snap_to_version
+                ;;    
             "Kill running process")
                 kill_running_process
                 ;;    
