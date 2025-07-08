@@ -9,7 +9,7 @@ Download the latest release
 
 # Installation without Snap
 
-Download the script, download Gum and enjoy.
+Download the script, download [Gum](https://github.com/charmbracelet/gum) and enjoy.
 
 
 # Compile it yourself
